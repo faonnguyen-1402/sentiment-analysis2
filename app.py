@@ -1,9 +1,11 @@
 import json
+import re
 from datetime import datetime
 
 import joblib
 import pandas as pd
 import streamlit as st
+from docx import Document
 
 from utils.text_processing import (
     clean_text,
@@ -20,7 +22,8 @@ from utils.text_processing import (
 st.set_page_config(
     page_title="Vietnamese Sentiment Analysis",
     page_icon="🎬",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 
@@ -79,126 +82,396 @@ dataset = load_dataset()
 st.markdown(
     """
     <style>
+    .stApp {
+        background:
+            radial-gradient(circle at top left, rgba(56, 189, 248, 0.14), transparent 34%),
+            radial-gradient(circle at top right, rgba(168, 85, 247, 0.12), transparent 32%),
+            radial-gradient(circle at bottom left, rgba(34, 197, 94, 0.08), transparent 28%),
+            linear-gradient(135deg, #020617 0%, #0f172a 42%, #020617 100%);
+        color: #e2e8f0;
+    }
+
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 4rem;
+        max-width: 1320px;
+    }
+
+    section[data-testid="stSidebar"] {
+        background:
+            linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(2, 6, 23, 0.98));
+        border-right: 1px solid rgba(148, 163, 184, 0.16);
+    }
+
+    section[data-testid="stSidebar"] * {
+        color: #e2e8f0;
+    }
+
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 10px;
+        background: rgba(15, 23, 42, 0.65);
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        padding: 10px;
+        border-radius: 18px;
+        backdrop-filter: blur(16px);
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 14px;
+        padding: 10px 16px;
+        color: #94a3b8;
+        font-weight: 700;
+    }
+
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, rgba(14, 165, 233, 0.24), rgba(168, 85, 247, 0.18));
+        color: #e0f2fe !important;
+        border: 1px solid rgba(56, 189, 248, 0.32);
+    }
+
+    div[data-testid="stMetric"] {
+        background: rgba(15, 23, 42, 0.78);
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 18px;
+        padding: 18px;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.24);
+    }
+
+    div[data-testid="stMetric"] label {
+        color: #94a3b8 !important;
+        font-weight: 700;
+    }
+
+    div[data-testid="stMetricValue"] {
+        color: #67e8f9 !important;
+        font-weight: 900;
+    }
+
+    .stButton > button,
+    .stDownloadButton > button {
+        border-radius: 14px;
+        border: 1px solid rgba(56, 189, 248, 0.24);
+        background: linear-gradient(135deg, rgba(14, 165, 233, 0.22), rgba(59, 130, 246, 0.14));
+        color: #e0f2fe;
+        font-weight: 800;
+        transition: 0.25s ease;
+    }
+
+    .stButton > button:hover,
+    .stDownloadButton > button:hover {
+        transform: translateY(-2px);
+        border-color: rgba(56, 189, 248, 0.7);
+        background: linear-gradient(135deg, rgba(14, 165, 233, 0.34), rgba(168, 85, 247, 0.22));
+        box-shadow: 0 16px 38px rgba(14, 165, 233, 0.14);
+        color: white;
+    }
+
+    textarea,
+    input {
+        border-radius: 16px !important;
+    }
+
+    .app-hero {
+        position: relative;
+        padding: 42px;
+        border-radius: 34px;
+        overflow: hidden;
+        margin-bottom: 28px;
+        background:
+            linear-gradient(135deg, rgba(15, 23, 42, 0.82), rgba(2, 6, 23, 0.82)),
+            radial-gradient(circle at top left, rgba(56, 189, 248, 0.28), transparent 32%),
+            radial-gradient(circle at bottom right, rgba(168, 85, 247, 0.22), transparent 34%);
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        box-shadow:
+            0 30px 100px rgba(0, 0, 0, 0.38),
+            inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(18px);
+    }
+
+    .app-hero::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image:
+            linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+        background-size: 42px 42px;
+        mask-image: linear-gradient(to bottom, black, transparent);
+        pointer-events: none;
+    }
+
+    .hero-content {
+        position: relative;
+        z-index: 1;
+        text-align: center;
+    }
+
+    .hero-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 16px;
+        border-radius: 999px;
+        margin-bottom: 18px;
+        background: rgba(56, 189, 248, 0.12);
+        border: 1px solid rgba(56, 189, 248, 0.3);
+        color: #67e8f9;
+        font-size: 13px;
+        font-weight: 900;
+        letter-spacing: 1.6px;
+        text-transform: uppercase;
+    }
+
     .main-title {
         text-align: center;
-        font-size: 52px;
-        font-weight: 900;
-        color: #38bdf8;
-        margin-bottom: 8px;
+        font-size: clamp(42px, 6vw, 76px);
+        line-height: 1.03;
+        font-weight: 950;
+        margin-bottom: 18px;
+        background: linear-gradient(90deg, #e0f2fe, #38bdf8, #a78bfa, #f0abfc);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-shadow: 0 0 48px rgba(56, 189, 248, 0.16);
     }
 
     .sub-title {
+        max-width: 780px;
+        margin: 0 auto 26px auto;
         text-align: center;
         font-size: 18px;
         color: #cbd5e1;
-        margin-bottom: 30px;
+        line-height: 1.8;
     }
 
-    .hero-card {
-        padding: 28px;
-        border-radius: 24px;
-        background: linear-gradient(135deg, #e0f2fe, #f8fafc);
-        border: 1px solid #bae6fd;
+    .hero-pipeline {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 24px;
+    }
+
+    .hero-chip {
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        color: #cbd5e1;
+        font-size: 13px;
+        font-weight: 750;
+    }
+
+    .glass-card {
+        position: relative;
+        padding: 26px;
+        border-radius: 26px;
+        background: rgba(15, 23, 42, 0.72);
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        box-shadow:
+            0 24px 70px rgba(0, 0, 0, 0.28),
+            inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        backdrop-filter: blur(18px);
+        margin-bottom: 22px;
+    }
+
+    .glass-card h3,
+    .glass-card h2 {
+        color: #e0f2fe;
+    }
+
+    .section-heading {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 28px;
+        font-weight: 950;
+        color: #e0f2fe;
+        margin-bottom: 18px;
+    }
+
+    .section-subtext {
+        color: #94a3b8;
+        line-height: 1.8;
+        margin-bottom: 18px;
+    }
+
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
         margin-bottom: 24px;
-        color: #0f172a;
-        font-size: 16px;
-        line-height: 1.7;
+    }
+
+    .dashboard-card {
+        padding: 22px;
+        border-radius: 22px;
+        background:
+            linear-gradient(135deg, rgba(15, 23, 42, 0.86), rgba(30, 41, 59, 0.62));
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        box-shadow: 0 20px 55px rgba(0, 0, 0, 0.24);
+    }
+
+    .dashboard-label {
+        color: #94a3b8;
+        font-size: 13px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 9px;
+    }
+
+    .dashboard-value {
+        color: #67e8f9;
+        font-size: 34px;
+        font-weight: 950;
+        line-height: 1;
+    }
+
+    .dashboard-note {
+        color: #cbd5e1;
+        font-size: 13px;
+        margin-top: 9px;
     }
 
     .info-card {
         padding: 22px;
         border-radius: 20px;
-        background-color: #f8fafc;
-        border: 1px solid #e2e8f0;
-        color: #0f172a;
+        background: rgba(255, 255, 255, 0.055);
+        border: 1px solid rgba(148, 163, 184, 0.14);
+        color: #cbd5e1;
         margin-bottom: 16px;
-        line-height: 1.6;
-    }
-
-    .positive-result {
-        padding: 34px;
-        border-radius: 24px;
-        background: linear-gradient(135deg, #dcfce7, #bbf7d0);
-        color: #166534;
-        text-align: center;
-        font-size: 36px;
-        font-weight: 900;
-        margin-top: 20px;
-        border: 1px solid #86efac;
-    }
-
-    .negative-result {
-        padding: 34px;
-        border-radius: 24px;
-        background: linear-gradient(135deg, #fee2e2, #fecaca);
-        color: #991b1b;
-        text-align: center;
-        font-size: 36px;
-        font-weight: 900;
-        margin-top: 20px;
-        border: 1px solid #fca5a5;
-    }
-
-    .pipeline-step {
-        padding: 15px 18px;
-        border-radius: 14px;
-        background-color: #eff6ff;
-        border-left: 6px solid #38bdf8;
-        margin-bottom: 10px;
-        font-weight: 700;
-        color: #0f172a;
-    }
-
-    .keyword-positive {
-        padding: 14px;
-        border-radius: 14px;
-        background-color: #dcfce7;
-        color: #166534;
-        font-weight: 700;
-    }
-
-    .keyword-negative {
-        padding: 14px;
-        border-radius: 14px;
-        background-color: #fee2e2;
-        color: #991b1b;
-        font-weight: 700;
+        line-height: 1.7;
     }
 
     .warning-card {
         padding: 18px;
         border-radius: 18px;
-        background-color: #fef3c7;
-        border: 1px solid #f59e0b;
-        color: #92400e;
-        font-weight: 600;
+        background: rgba(245, 158, 11, 0.12);
+        border: 1px solid rgba(245, 158, 11, 0.32);
+        color: #fde68a;
+        font-weight: 700;
         margin-bottom: 18px;
     }
 
     .success-card {
         padding: 18px;
         border-radius: 18px;
-        background-color: #dcfce7;
-        border: 1px solid #22c55e;
-        color: #166534;
-        font-weight: 600;
+        background: rgba(34, 197, 94, 0.12);
+        border: 1px solid rgba(34, 197, 94, 0.32);
+        color: #bbf7d0;
+        font-weight: 700;
         margin-bottom: 18px;
     }
 
-    .metric-card {
+    .result-shell {
+        margin-top: 28px;
+        padding: 30px;
+        border-radius: 30px;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        background: rgba(15, 23, 42, 0.76);
+        box-shadow: 0 26px 75px rgba(0, 0, 0, 0.28);
+    }
+
+    .positive-result {
+        padding: 34px;
+        border-radius: 26px;
+        background:
+            linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(74, 222, 128, 0.12)),
+            radial-gradient(circle at top right, rgba(187, 247, 208, 0.18), transparent 30%);
+        color: #bbf7d0;
+        text-align: center;
+        font-size: 38px;
+        font-weight: 950;
+        border: 1px solid rgba(34, 197, 94, 0.38);
+        box-shadow: 0 0 45px rgba(34, 197, 94, 0.12);
+    }
+
+    .negative-result {
+        padding: 34px;
+        border-radius: 26px;
+        background:
+            linear-gradient(135deg, rgba(239, 68, 68, 0.22), rgba(248, 113, 113, 0.12)),
+            radial-gradient(circle at top right, rgba(254, 202, 202, 0.18), transparent 30%);
+        color: #fecaca;
+        text-align: center;
+        font-size: 38px;
+        font-weight: 950;
+        border: 1px solid rgba(248, 113, 113, 0.38);
+        box-shadow: 0 0 45px rgba(248, 113, 113, 0.12);
+    }
+
+    .keyword-positive {
+        padding: 15px;
+        border-radius: 16px;
+        background: rgba(34, 197, 94, 0.12);
+        border: 1px solid rgba(34, 197, 94, 0.24);
+        color: #bbf7d0;
+        font-weight: 800;
+    }
+
+    .keyword-negative {
+        padding: 15px;
+        border-radius: 16px;
+        background: rgba(239, 68, 68, 0.12);
+        border: 1px solid rgba(248, 113, 113, 0.24);
+        color: #fecaca;
+        font-weight: 800;
+    }
+
+    .pipeline-step {
+        padding: 16px 18px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(148, 163, 184, 0.14);
+        border-left: 5px solid #38bdf8;
+        margin-bottom: 12px;
+        font-weight: 850;
+        color: #e0f2fe;
+        box-shadow: 0 16px 38px rgba(0, 0, 0, 0.16);
+    }
+
+    .footer-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        margin-top: 24px;
+    }
+
+    .footer-card {
         padding: 18px;
         border-radius: 18px;
-        background-color: #f1f5f9;
-        border: 1px solid #cbd5e1;
-        color: #0f172a;
+        background: rgba(15, 23, 42, 0.75);
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        color: #cbd5e1;
         text-align: center;
-        font-weight: 700;
+        font-weight: 800;
     }
 
     .small-note {
         color: #94a3b8;
         font-size: 14px;
-        line-height: 1.6;
+        line-height: 1.7;
+    }
+
+    @media (max-width: 1100px) {
+        .dashboard-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 720px) {
+        .dashboard-grid,
+        .footer-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .app-hero {
+            padding: 28px;
+        }
+
+        .main-title {
+            font-size: 40px;
+        }
     }
     </style>
     """,
@@ -220,6 +493,47 @@ if "history" not in st.session_state:
 # =========================
 # HELPER FUNCTIONS
 # =========================
+
+def read_txt_file(uploaded_file):
+    try:
+        content = uploaded_file.read().decode("utf-8")
+    except UnicodeDecodeError:
+        uploaded_file.seek(0)
+        content = uploaded_file.read().decode("utf-8-sig", errors="ignore")
+
+    return content
+
+
+def read_docx_file(uploaded_file):
+    document = Document(uploaded_file)
+    paragraphs = []
+
+    for paragraph in document.paragraphs:
+        text = paragraph.text.strip()
+        if text:
+            paragraphs.append(text)
+
+    return "\n".join(paragraphs)
+
+
+def split_long_text(text):
+    text = str(text).strip()
+    paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
+    chunks = []
+
+    for paragraph in paragraphs:
+        sentences = re.split(r"(?<=[.!?。！？])\s+|(?<=[.!?])", paragraph)
+
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if len(sentence) >= 5:
+                chunks.append(sentence)
+
+    if not chunks and text:
+        chunks = [text]
+
+    return chunks
+
 
 def predict_sentiment(comment):
     cleaned_comment = clean_text(comment)
@@ -255,6 +569,40 @@ def predict_sentiment(comment):
     }
 
 
+def analyze_long_text(text):
+    chunks = split_long_text(text)
+    results = []
+
+    for index, chunk in enumerate(chunks, start=1):
+        result = predict_sentiment(chunk)
+
+        results.append({
+            "STT": index,
+            "Đoạn / Câu": chunk,
+            "Dự đoán": result["prediction"],
+            "Độ tin cậy (%)": round(result["confidence"], 2),
+            "Từ tích cực": ", ".join(result["analysis"]["positive_words"]),
+            "Từ tiêu cực": ", ".join(result["analysis"]["negative_words"]),
+            "Số từ": result["analysis"]["word_count"]
+        })
+
+    result_df = pd.DataFrame(results)
+
+    if result_df.empty:
+        return result_df, "Unknown", 0, 0, 0
+
+    positive_count = int((result_df["Dự đoán"] == "Positive").sum())
+    negative_count = int((result_df["Dự đoán"] == "Negative").sum())
+    avg_confidence = float(result_df["Độ tin cậy (%)"].mean())
+
+    if positive_count >= negative_count:
+        overall_prediction = "Positive"
+    else:
+        overall_prediction = "Negative"
+
+    return result_df, overall_prediction, positive_count, negative_count, avg_confidence
+
+
 def predict_many(texts):
     results = []
 
@@ -281,29 +629,147 @@ def set_example(text):
     st.session_state.comment = text
 
 
+def render_dashboard_card(label, value, note):
+    st.markdown(
+        f"""
+        <div class="dashboard-card">
+            <div class="dashboard-label">{label}</div>
+            <div class="dashboard-value">{value}</div>
+            <div class="dashboard-note">{note}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+def render_pipeline():
+    pipeline_steps = get_model_pipeline_description()
+
+    for index, step in enumerate(pipeline_steps, start=1):
+        st.markdown(
+            f"<div class='pipeline-step'>{index}. {step}</div>",
+            unsafe_allow_html=True
+        )
+
+
+def render_overall_result(overall_prediction, positive_message, negative_message):
+    if overall_prediction == "Positive":
+        st.markdown(
+            f"<div class='positive-result'>😊 Tổng thể: Positive<br><span style='font-size:18px;'>{positive_message}</span></div>",
+            unsafe_allow_html=True
+        )
+    elif overall_prediction == "Negative":
+        st.markdown(
+            f"<div class='negative-result'>😞 Tổng thể: Negative<br><span style='font-size:18px;'>{negative_message}</span></div>",
+            unsafe_allow_html=True
+        )
+    else:
+        st.warning("Không đủ dữ liệu để phân tích.")
+
+
+def render_long_analysis_result(result_df, overall_prediction, positive_count, negative_count, avg_confidence, download_name):
+    st.markdown("<div class='result-shell'>", unsafe_allow_html=True)
+    st.markdown("## 📊 Kết quả tổng quan")
+
+    render_overall_result(
+        overall_prediction,
+        "Nội dung nghiêng về cảm xúc tích cực",
+        "Nội dung nghiêng về cảm xúc tiêu cực"
+    )
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric("Tổng câu/đoạn", len(result_df))
+
+    with col2:
+        st.metric("Positive", positive_count)
+
+    with col3:
+        st.metric("Negative", negative_count)
+
+    with col4:
+        st.metric("Độ tin cậy TB", f"{avg_confidence:.2f}%")
+
+    if not result_df.empty:
+        chart_df = pd.DataFrame({
+            "Label": ["Positive", "Negative"],
+            "Count": [positive_count, negative_count]
+        })
+
+        st.markdown("### 📈 Biểu đồ phân bố cảm xúc")
+        st.bar_chart(chart_df, x="Label", y="Count")
+
+        st.markdown("### 🔎 Chi tiết từng câu/đoạn")
+        st.dataframe(result_df, width="stretch", hide_index=True)
+
+        result_csv = result_df.to_csv(index=False).encode("utf-8-sig")
+
+        st.download_button(
+            label="📥 Tải kết quả phân tích",
+            data=result_csv,
+            file_name=download_name,
+            mime="text/csv",
+            width="stretch"
+        )
+
+    with st.expander("📌 Cách hệ thống xử lý"):
+        st.write(
+            """
+            Hệ thống tách nội dung thành các câu/đoạn nhỏ.
+            Mỗi câu/đoạn được đưa qua pipeline:
+            
+            Clean Text → TF-IDF Vectorization → Logistic Regression → Positive / Negative
+            
+            Sau đó hệ thống tổng hợp số lượng Positive và Negative để đưa ra kết quả tổng thể.
+            """
+        )
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 # =========================
-# HEADER
+# DATA SUMMARY
 # =========================
 
-st.markdown(
-    "<div class='main-title'>🎬 Vietnamese Sentiment Analysis</div>",
-    unsafe_allow_html=True
-)
+total_rows = len(dataset) if not dataset.empty else 0
 
-st.markdown(
-    "<div class='sub-title'>Phân loại cảm xúc bình luận tiếng Việt thành Positive hoặc Negative</div>",
-    unsafe_allow_html=True
-)
+if not dataset.empty and "label" in dataset.columns:
+    total_positive = int((dataset["label"] == "Positive").sum())
+    total_negative = int((dataset["label"] == "Negative").sum())
+else:
+    total_positive = 0
+    total_negative = 0
+
+train_size = model_info.get("train_size", "N/A")
+test_size = model_info.get("test_size", "N/A")
+max_features = model_info.get("max_features", "N/A")
+
+
+# =========================
+# HERO
+# =========================
 
 st.markdown(
     """
-    <div class='hero-card'>
-        <b>Project:</b> Phân loại cảm xúc văn bản đơn giản bằng Machine Learning.
-        Người dùng có thể nhập một bình luận hoặc tải file CSV để phân tích hàng loạt.
-        <br>
-        <b>Pipeline:</b> Clean Text → TF-IDF Vectorization → Logistic Regression → Positive / Negative.
-        <br>
-        <b>Ưu điểm:</b> Mô hình có tốc độ xử lý nhanh, dễ triển khai, phù hợp với bài toán phân loại cảm xúc văn bản cơ bản và hỗ trợ phân tích nhiều bình luận cùng lúc.
+    <div class="app-hero">
+        <div class="hero-content">
+            <div class="hero-badge">AI NLP PROJECT</div>
+            <h1 class="main-title">🎬 Vietnamese Sentiment Analysis</h1>
+            <p class="sub-title">
+                Ứng dụng phân tích cảm xúc bình luận tiếng Việt bằng Machine Learning.
+                Hệ thống hỗ trợ nhập một bình luận, phân tích đoạn dài, đọc file TXT/Word,
+                phân tích hàng loạt bằng CSV, xem dataset và đánh giá mô hình trực quan.
+            </p>
+            <div class="hero-pipeline">
+                <span class="hero-chip">Clean Text</span>
+                <span class="hero-chip">TF-IDF Vectorization</span>
+                <span class="hero-chip">Logistic Regression</span>
+                <span class="hero-chip">Long Text Analysis</span>
+                <span class="hero-chip">TXT / DOCX</span>
+                <span class="hero-chip">CSV Batch</span>
+            </div>
+        </div>
     </div>
     """,
     unsafe_allow_html=True
@@ -315,23 +781,28 @@ st.markdown(
 # =========================
 
 with st.sidebar:
-    st.header("📌 Thông tin project")
+    st.markdown("## 📌 Project Control")
 
-    st.write("**Tên đề tài:** Phân loại cảm xúc văn bản")
+    st.markdown(
+        """
+        <div class="info-card">
+            <b>Tên đề tài:</b><br>
+            Phân loại cảm xúc văn bản tiếng Việt
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
     st.write("**Ngôn ngữ:** Python")
     st.write("**Web:** Streamlit")
     st.write("**Vectorizer:** TF-IDF")
     st.write("**Model:** Logistic Regression")
     st.write("**Output:** Positive / Negative")
+    st.write("**File hỗ trợ:** TXT, DOCX, CSV")
 
     st.markdown("---")
 
     st.metric("Accuracy", f"{accuracy:.2f}")
-
-    train_size = model_info.get("train_size", 0)
-    test_size = model_info.get("test_size", 0)
-    max_features = model_info.get("max_features", "N/A")
-
     st.write("**Train size:**", train_size)
     st.write("**Test size:**", test_size)
     st.write("**Max features:**", max_features)
@@ -339,9 +810,9 @@ with st.sidebar:
     st.markdown("---")
 
     if accuracy < 0.6:
-        st.warning("Accuracy đang thấp. Nên tăng dataset để model dự đoán tốt hơn.")
+        st.warning("Accuracy đang thấp. Nên tăng dataset để mô hình dự đoán tốt hơn.")
     else:
-        st.success("Model đang có accuracy khá ổn.")
+        st.success("Model đang có accuracy khá ổn cho bản demo.")
 
     st.markdown("---")
 
@@ -374,12 +845,30 @@ with st.sidebar:
 
 
 # =========================
+# DASHBOARD
+# =========================
+
+st.markdown("## 🚀 Project Dashboard")
+
+st.markdown("<div class='dashboard-grid'>", unsafe_allow_html=True)
+
+render_dashboard_card("Accuracy", f"{accuracy:.2f}", "Độ chính xác trên tập kiểm tra")
+render_dashboard_card("Dataset", total_rows, "Tổng số bình luận hiện có")
+render_dashboard_card("Positive", total_positive, "Số mẫu tích cực")
+render_dashboard_card("Negative", total_negative, "Số mẫu tiêu cực")
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+
+# =========================
 # MAIN TABS
 # =========================
 
-tab_analyze, tab_batch, tab_dataset, tab_model, tab_about = st.tabs(
+tab_analyze, tab_long_text, tab_file, tab_batch, tab_dataset, tab_model, tab_about = st.tabs(
     [
         "🔍 Phân tích 1 câu",
+        "📝 Phân tích đoạn dài",
+        "📄 Phân tích TXT / Word",
         "📁 Phân tích CSV",
         "🗂️ Dataset",
         "📊 Đánh giá mô hình",
@@ -393,22 +882,27 @@ tab_analyze, tab_batch, tab_dataset, tab_model, tab_about = st.tabs(
 # =========================
 
 with tab_analyze:
+    st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='section-heading'>🔍 Phân tích cảm xúc một bình luận</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<p class='section-subtext'>Nhập một bình luận tiếng Việt, hệ thống sẽ làm sạch văn bản, vector hóa bằng TF-IDF và dự đoán cảm xúc.</p>",
+        unsafe_allow_html=True
+    )
+
     left_col, right_col = st.columns([1.35, 1])
 
     with left_col:
-        st.markdown("### ✍️ Nhập bình luận cần phân tích")
-
         comment = st.text_area(
             "Nội dung bình luận",
             value=st.session_state.comment,
             placeholder="Ví dụ: Phim hơi dài nhưng nội dung rất hay và cảm động...",
-            height=180
+            height=190
         )
 
         button_col1, button_col2 = st.columns(2)
 
         with button_col1:
-            analyze_btn = st.button("🔍 Phân tích cảm xúc", width="stretch")
+            analyze_btn = st.button("🚀 Phân tích cảm xúc", width="stretch")
 
         with button_col2:
             clear_btn = st.button("🧹 Xóa nội dung", width="stretch")
@@ -419,14 +913,9 @@ with tab_analyze:
 
     with right_col:
         st.markdown("### 🧠 Quy trình xử lý")
+        render_pipeline()
 
-        pipeline_steps = get_model_pipeline_description()
-
-        for index, step in enumerate(pipeline_steps, start=1):
-            st.markdown(
-                f"<div class='pipeline-step'>{index}. {step}</div>",
-                unsafe_allow_html=True
-            )
+    st.markdown("</div>", unsafe_allow_html=True)
 
     if analyze_btn:
         if comment.strip() == "":
@@ -439,22 +928,21 @@ with tab_analyze:
             confidence = result["confidence"]
             analysis = result["analysis"]
 
-            st.markdown("---")
+            st.markdown("<div class='result-shell'>", unsafe_allow_html=True)
             st.markdown("## 📊 Kết quả phân tích")
 
             if prediction == "Positive":
                 st.markdown(
-                    "<div class='positive-result'>😊 Positive<br>Bình luận mang cảm xúc tích cực</div>",
+                    "<div class='positive-result'>😊 Positive<br><span style='font-size:18px;'>Bình luận mang cảm xúc tích cực</span></div>",
                     unsafe_allow_html=True
                 )
             else:
                 st.markdown(
-                    "<div class='negative-result'>😞 Negative<br>Bình luận mang cảm xúc tiêu cực</div>",
+                    "<div class='negative-result'>😞 Negative<br><span style='font-size:18px;'>Bình luận mang cảm xúc tiêu cực</span></div>",
                     unsafe_allow_html=True
                 )
 
             st.markdown("### 🎯 Độ tin cậy dự đoán")
-
             st.progress(int(confidence))
             st.write(f"Độ tin cậy: **{confidence:.2f}%**")
 
@@ -519,20 +1007,19 @@ with tab_analyze:
             with st.expander("📚 Giải thích kỹ thuật"):
                 st.write(
                     """
-                    Ứng dụng này sử dụng Machine Learning nhẹ thay vì TensorFlow.
-
-                    Quy trình:
+                    Quy trình kỹ thuật:
                     - Làm sạch văn bản đầu vào
-                    - Dùng TF-IDF để chuyển văn bản thành vector số
-                    - Dùng Logistic Regression để phân loại Positive hoặc Negative
-
-                    Hướng này phù hợp với dataset nhỏ và bài toán phân loại cảm xúc cơ bản.
+                    - Biến văn bản thành vector số bằng TF-IDF
+                    - Đưa vector vào mô hình Logistic Regression
+                    - Trả về nhãn Positive hoặc Negative kèm độ tin cậy
                     """
                 )
 
+            st.markdown("</div>", unsafe_allow_html=True)
+
     if st.session_state.history:
-        st.markdown("---")
-        st.markdown("## 🕒 Lịch sử phân tích")
+        st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+        st.markdown("<div class='section-heading'>🕒 Lịch sử phân tích</div>", unsafe_allow_html=True)
 
         history_data = []
 
@@ -558,20 +1045,172 @@ with tab_analyze:
             width="stretch"
         )
 
+        st.markdown("</div>", unsafe_allow_html=True)
+
 
 # =========================
-# TAB 2: BATCH CSV ANALYSIS
+# TAB 2: LONG TEXT ANALYSIS
 # =========================
 
-with tab_batch:
-    st.markdown("## 📁 Phân tích nhiều bình luận bằng file CSV")
+with tab_long_text:
+    st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='section-heading'>📝 Phân tích đoạn nhận xét dài</div>", unsafe_allow_html=True)
+
+    st.markdown(
+        """
+        <p class='section-subtext'>
+        Dùng cho review dài, nhiều câu hoặc nhiều đoạn. Hệ thống sẽ tự tách văn bản thành từng câu/đoạn nhỏ,
+        phân tích từng phần và tổng hợp kết quả cảm xúc chung.
+        </p>
+        """,
+        unsafe_allow_html=True
+    )
+
+    sample_long_text = (
+        "Bộ phim có phần mở đầu hơi chậm và một số cảnh chưa thật sự cần thiết. "
+        "Tuy nhiên càng về sau nội dung càng hấp dẫn, diễn viên chính thể hiện rất tốt. "
+        "Âm nhạc cảm động, hình ảnh đẹp và thông điệp phim khá ý nghĩa."
+    )
+
+    long_text = st.text_area(
+        "Nhập đoạn nhận xét dài",
+        placeholder=sample_long_text,
+        height=280
+    )
+
+    long_col1, long_col2 = st.columns(2)
+
+    with long_col1:
+        analyze_long_btn = st.button("🚀 Phân tích đoạn dài", width="stretch")
+
+    with long_col2:
+        paste_sample_btn = st.button("✨ Hiện ví dụ mẫu", width="stretch")
+
+    if paste_sample_btn:
+        st.info(sample_long_text)
+
+    if analyze_long_btn:
+        if long_text.strip() == "":
+            st.warning("Vui lòng nhập đoạn văn bản trước khi phân tích.")
+        else:
+            long_result_df, overall_prediction, positive_count, negative_count, avg_confidence = analyze_long_text(long_text)
+
+            render_long_analysis_result(
+                long_result_df,
+                overall_prediction,
+                positive_count,
+                negative_count,
+                avg_confidence,
+                "long_text_sentiment_result.csv"
+            )
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+# =========================
+# TAB 3: TXT / WORD FILE ANALYSIS
+# =========================
+
+with tab_file:
+    st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='section-heading'>📄 Phân tích cảm xúc từ file TXT / Word</div>", unsafe_allow_html=True)
+
+    st.markdown(
+        """
+        <p class='section-subtext'>
+        Tải lên file <b>.txt</b> hoặc <b>.docx</b>. 
+        Hệ thống sẽ đọc nội dung file, tách thành các câu/đoạn nhỏ,
+        phân tích từng phần và đưa ra kết quả cảm xúc tổng thể.
+        </p>
+        """,
+        unsafe_allow_html=True
+    )
+
+    uploaded_text_file = st.file_uploader(
+        "Tải file cần phân tích",
+        type=["txt", "docx"]
+    )
 
     st.markdown(
         """
         <div class='info-card'>
-        Tải lên file CSV có cột <b>text</b>. 
-        Hệ thống sẽ phân tích từng dòng và trả về kết quả Positive hoặc Negative.
+        <b>Định dạng hỗ trợ:</b><br>
+        • TXT: file văn bản thuần<br>
+        • DOCX: file Microsoft Word đời mới<br><br>
+        <b>Lưu ý:</b> File .doc cũ chưa được hỗ trợ. Hãy lưu lại thành .docx trước khi upload.
         </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    if uploaded_text_file is not None:
+        file_name = uploaded_text_file.name.lower()
+
+        try:
+            if file_name.endswith(".txt"):
+                file_content = read_txt_file(uploaded_text_file)
+            elif file_name.endswith(".docx"):
+                file_content = read_docx_file(uploaded_text_file)
+            else:
+                file_content = ""
+
+            if file_content.strip() == "":
+                st.error("File không có nội dung hoặc không đọc được nội dung.")
+            else:
+                st.success(f"Đã đọc file thành công: {uploaded_text_file.name}")
+
+                file_words = len(file_content.split())
+                file_chars = len(file_content)
+
+                file_col1, file_col2, file_col3 = st.columns(3)
+
+                with file_col1:
+                    st.metric("Số từ trong file", file_words)
+
+                with file_col2:
+                    st.metric("Số ký tự", file_chars)
+
+                with file_col3:
+                    st.metric("Loại file", file_name.split(".")[-1].upper())
+
+                with st.expander("👀 Xem nội dung file"):
+                    st.text_area(
+                        "Nội dung đọc được",
+                        value=file_content,
+                        height=300
+                    )
+
+                if st.button("🚀 Phân tích nội dung file", width="stretch"):
+                    file_result_df, overall_prediction, positive_count, negative_count, avg_confidence = analyze_long_text(file_content)
+
+                    render_long_analysis_result(
+                        file_result_df,
+                        overall_prediction,
+                        positive_count,
+                        negative_count,
+                        avg_confidence,
+                        "file_sentiment_result.csv"
+                    )
+
+        except Exception as e:
+            st.error(f"Không thể xử lý file. Lỗi: {e}")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+# =========================
+# TAB 4: BATCH CSV ANALYSIS
+# =========================
+
+with tab_batch:
+    st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='section-heading'>📁 Phân tích nhiều bình luận bằng CSV</div>", unsafe_allow_html=True)
+
+    st.markdown(
+        """
+        <p class='section-subtext'>
+        Tải lên file CSV có cột <b>text</b>. Hệ thống sẽ phân tích từng dòng và trả về kết quả Positive hoặc Negative.
+        </p>
         """,
         unsafe_allow_html=True
     )
@@ -649,21 +1288,20 @@ with tab_batch:
         except Exception as e:
             st.error(f"Không đọc được file CSV. Lỗi: {e}")
 
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
 # =========================
-# TAB 3: DATASET
+# TAB 5: DATASET
 # =========================
 
 with tab_dataset:
-    st.markdown("## 🗂️ Dataset hiện tại")
+    st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='section-heading'>🗂️ Dataset hiện tại</div>", unsafe_allow_html=True)
 
     if dataset.empty:
         st.error("Không đọc được file data/reviews.csv")
     else:
-        total_rows = len(dataset)
-        total_positive = (dataset["label"] == "Positive").sum() if "label" in dataset.columns else 0
-        total_negative = (dataset["label"] == "Negative").sum() if "label" in dataset.columns else 0
-
         col1, col2, col3 = st.columns(3)
 
         with col1:
@@ -717,13 +1355,16 @@ with tab_dataset:
                 """
             )
 
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
 # =========================
-# TAB 4: MODEL EVALUATION
+# TAB 6: MODEL EVALUATION
 # =========================
 
 with tab_model:
-    st.markdown("## 📊 Đánh giá mô hình")
+    st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='section-heading'>📊 Đánh giá mô hình</div>", unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns(3)
 
@@ -731,10 +1372,10 @@ with tab_model:
         st.metric("Accuracy", f"{accuracy:.2f}")
 
     with col2:
-        st.metric("Train size", model_info.get("train_size", "N/A"))
+        st.metric("Train size", train_size)
 
     with col3:
-        st.metric("Test size", model_info.get("test_size", "N/A"))
+        st.metric("Test size", test_size)
 
     if accuracy < 0.6:
         st.markdown(
@@ -769,7 +1410,7 @@ with tab_model:
             <div class='info-card'>
             <b>Classifier:</b> Logistic Regression<br>
             <b>Library:</b> Scikit-learn<br>
-            <b>Deep Learning:</b> Không dùng TensorFlow<br>
+            <b>Output:</b> Positive / Negative<br>
             </div>
             """,
             unsafe_allow_html=True
@@ -808,13 +1449,16 @@ with tab_model:
             """
         )
 
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
 # =========================
-# TAB 5: ABOUT PROJECT
+# TAB 7: ABOUT PROJECT
 # =========================
 
 with tab_about:
-    st.markdown("## 📘 Giới thiệu project")
+    st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='section-heading'>📘 Giới thiệu project</div>", unsafe_allow_html=True)
 
     st.markdown(
         """
@@ -830,30 +1474,39 @@ with tab_about:
     st.markdown(
         """
         <div class='info-card'>
-        <h3>2. Lý do chọn TF-IDF + Logistic Regression</h3>
-        Đề tài có gợi ý Embedding → LSTM → Dense, nhưng vì TensorFlow khá nặng
-        và dataset hiện tại còn nhỏ, project chọn hướng Machine Learning nhẹ hơn.
-        TF-IDF + Logistic Regression phù hợp với bài toán phân loại văn bản cơ bản,
-        dễ cài đặt, dễ chạy và dễ giải thích khi thuyết trình.
+        <h3>2. Mô hình sử dụng</h3>
+        Project sử dụng NLP cơ bản kết hợp TF-IDF Vectorization và Logistic Regression.
+        Đây là hướng tiếp cận phù hợp với bài toán phân loại văn bản cơ bản,
+        dễ triển khai, tốc độ xử lý nhanh và phù hợp với dataset tiếng Việt đơn giản.
         </div>
         """,
         unsafe_allow_html=True
     )
 
     st.markdown("### 3. Pipeline")
-
-    pipeline_steps = get_model_pipeline_description()
-
-    for index, step in enumerate(pipeline_steps, start=1):
-        st.markdown(
-            f"<div class='pipeline-step'>{index}. {step}</div>",
-            unsafe_allow_html=True
-        )
+    render_pipeline()
 
     st.markdown(
         """
         <div class='info-card'>
-        <h3>4. Hướng phát triển</h3>
+        <h3>4. Chức năng chính</h3>
+        <ul>
+            <li>Phân tích một bình luận ngắn</li>
+            <li>Phân tích đoạn nhận xét dài bằng cách tách câu/đoạn</li>
+            <li>Phân tích nội dung file TXT hoặc DOCX</li>
+            <li>Phân tích hàng loạt bằng CSV</li>
+            <li>Xem dataset và đánh giá mô hình</li>
+            <li>Tải kết quả phân tích về file CSV</li>
+        </ul>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        """
+        <div class='info-card'>
+        <h3>5. Hướng phát triển</h3>
         <ul>
             <li>Tăng dataset lên 100 - 300 câu hoặc nhiều hơn</li>
             <li>Thêm nhãn Neutral</li>
@@ -866,6 +1519,8 @@ with tab_about:
         unsafe_allow_html=True
     )
 
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
 # =========================
 # FOOTER
@@ -873,22 +1528,22 @@ with tab_about:
 
 st.markdown("---")
 
-footer_col1, footer_col2, footer_col3 = st.columns(3)
-
-with footer_col1:
-    st.info("**NLP:** Clean text, keyword analysis")
-
-with footer_col2:
-    st.info("**Feature:** TF-IDF Vectorization")
-
-with footer_col3:
-    st.info("**Model:** Logistic Regression")
+st.markdown(
+    """
+    <div class="footer-grid">
+        <div class="footer-card">🧹 NLP: Clean text & keyword analysis</div>
+        <div class="footer-card">📐 Feature: TF-IDF Vectorization</div>
+        <div class="footer-card">🤖 Model: Logistic Regression</div>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 st.markdown(
     """
-    <p class='small-note'>
-    Ghi chú: Project này ưu tiên sự nhẹ, dễ chạy và dễ demo. 
-    Khi dataset lớn hơn, có thể mở rộng sang các mô hình nâng cao hơn.
+    <p class='small-note' style='text-align:center; margin-top:20px;'>
+    Project phân loại cảm xúc văn bản tiếng Việt với giao diện Streamlit dashboard hiện đại.
+    Hệ thống hỗ trợ phân tích bình luận ngắn, đoạn dài, file TXT/DOCX và CSV.
     </p>
     """,
     unsafe_allow_html=True
